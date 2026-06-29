@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { MousePointer2, Eye, EyeOff, Settings2, AlignLeft, AlignCenter, AlignRight, Target } from 'lucide-react'
 
 const DEFAULT_FIELDS = {
@@ -63,6 +63,63 @@ export default function PlaceholderEditor({ templateImageUrl, value, onChange })
   const [isClickMode, setIsClickMode] = useState(false)
   const imageRef = useRef(null)
 
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfError, setPdfError] = useState(null)
+  const canvasRef = useRef(null)
+
+  const isPdf = templateImageUrl?.toLowerCase().includes('.pdf') || templateImageUrl?.startsWith('data:application/pdf')
+
+  const loadPdf = useCallback(async (url) => {
+    if (!url) return
+    setPdfLoading(true)
+    setPdfError(null)
+    try {
+      let pdfjsLib = window.pdfjsLib
+      if (!pdfjsLib) {
+        pdfjsLib = await new Promise((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js'
+          script.onload = () => resolve(window.pdfjsLib)
+          script.onerror = () => reject(new Error('Failed to load PDF preview engine from CDN.'))
+          document.head.appendChild(script)
+        })
+      }
+
+      if (pdfjsLib && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+      }
+
+      const loadingTask = pdfjsLib.getDocument(url)
+      const pdf = await loadingTask.promise
+      const page = await pdf.getPage(1)
+
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const context = canvas.getContext('2d')
+      const viewport = page.getViewport({ scale: 2.0 })
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      }
+      await page.render(renderContext).promise
+    } catch (err) {
+      console.error('PDF rendering failed:', err)
+      setPdfError(err.message || 'Failed to render PDF template.')
+    } finally {
+      setPdfLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isPdf && templateImageUrl) {
+      loadPdf(templateImageUrl)
+    }
+  }, [isPdf, templateImageUrl, loadPdf])
+
   const updateField = (fieldKey, updates) => {
     const updated = {
       ...fields,
@@ -124,12 +181,34 @@ export default function PlaceholderEditor({ templateImageUrl, value, onChange })
           style={{ aspectRatio: '1.414 / 1' }}
         >
           {templateImageUrl ? (
-            <img
-              src={templateImageUrl}
-              alt="Certificate template"
-              className="w-full h-full object-contain select-none"
-              draggable={false}
-            />
+            isPdf ? (
+              <div className="w-full h-full relative">
+                {pdfLoading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50/80 dark:bg-gray-900/80 z-10 gap-2">
+                    <div className="w-8 h-8 rounded-full border-4 border-primary-500 border-t-transparent animate-spin" />
+                    <p className="text-xs text-gray-500">Loading PDF template...</p>
+                  </div>
+                )}
+                {pdfError ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center text-red-500">
+                    <p className="text-sm font-semibold mb-1">Error Loading Template</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{pdfError}</p>
+                  </div>
+                ) : (
+                  <canvas
+                    ref={canvasRef}
+                    className="w-full h-full object-contain select-none"
+                  />
+                )}
+              </div>
+            ) : (
+              <img
+                src={templateImageUrl}
+                alt="Certificate template"
+                className="w-full h-full object-contain select-none"
+                draggable={false}
+              />
+            )
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center text-gray-400 dark:text-gray-600">

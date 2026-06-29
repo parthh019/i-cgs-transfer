@@ -27,6 +27,7 @@ export default function EventGenerate() {
   const { downloadBlob } = useDownload()
   const [polling, setPolling] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewType, setPreviewType] = useState(null) // 'pdf' or 'image'
   const [previewLoading, setPreviewLoading] = useState(false)
 
   const { data: event, isLoading: eventLoading } = useQuery({
@@ -44,6 +45,8 @@ export default function EventGenerate() {
     setPreviewLoading(true)
     try {
       const res = await excelAPI.preview(id)
+      const isPdfBlob = res.data.type === 'application/pdf'
+      setPreviewType(isPdfBlob ? 'pdf' : 'image')
       const url = URL.createObjectURL(res.data)
       setPreviewUrl(url)
     } catch {
@@ -128,7 +131,11 @@ export default function EventGenerate() {
                 <p className="text-sm">Generating preview...</p>
               </div>
             ) : previewUrl ? (
-              <img src={previewUrl} alt="Certificate preview" className="w-full object-contain" />
+              previewType === 'pdf' ? (
+                <iframe src={previewUrl} title="Certificate Preview" className="w-full h-[500px] border-0 rounded-xl" />
+              ) : (
+                <img src={previewUrl} alt="Certificate preview" className="w-full object-contain" />
+              )
             ) : (
               <div className="flex flex-col items-center gap-3 text-gray-300 dark:text-gray-700 p-8 text-center">
                 <ImageOff size={40} />
